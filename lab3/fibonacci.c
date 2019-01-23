@@ -15,6 +15,18 @@
  */
 
 /* Write your solution here */
+void fib(int **fibs, int count) { 
+    *fibs = malloc(count * sizeof(int));
+    if (count >= 1) {
+        (*fibs)[0] = 0;
+        }
+    if (count >= 2) {
+        (*fibs)[1] = 1;
+        for (int i = 2; i < count; i++) {
+            (*fibs)[i] = (*fibs)[i - 1] + (*fibs)[i - 2];
+            }
+        }
+    }
 
 
 int main(int argc, char **argv) {
