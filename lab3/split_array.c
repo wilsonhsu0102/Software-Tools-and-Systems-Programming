@@ -44,7 +44,7 @@ int **split_array(const int *s, int length) {
 int *build_array(char **strs, int size) {
     int *array = malloc(size * sizeof(int));
     for (int i=1; i < size + 1; i++) {
-        array[i - 1] = *strs[i] - 48;
+        array[i - 1] = strtol(strs[i], NULL, 10);
     }
     return array;
 }
