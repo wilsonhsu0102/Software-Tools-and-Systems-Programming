@@ -30,22 +30,21 @@ int main(int argc, char **argv) {
      * is the address
      */
     // printf("%c,%#lx\n", VARIABLES TO PRINT GO HERE);
-    int result;
     char operation;
     unsigned long address;
     int byte;
     FILE *trace = fopen(argv[1], "r");
     if (trace) {
-        while ((result = fscanf(trace, "%c %lx,%d\n", &operation, &address, &byte) != EOF) || (result = fscanf(trace, "%c  %lx,%d\n", &operation, &address, &byte) != EOF)) {
+        while (fscanf(trace, "%c %lx,%d\n", &operation, &address, &byte) != EOF) {
             if (address == start_marker) {
-                while ((result = fscanf(trace, "%c %lx,%d\n", &operation, &address, &byte) != EOF) || (result = fscanf(trace, "%c  %lx,%d\n", &operation, &address, &byte) != EOF)) {
+                while (fscanf(trace, "%c %lx,%d\n", &operation, &address, &byte) != EOF) {
                     if (address != end_marker) {
                         printf("%c,%#lx\n", operation, address);
                     } else {
                         break;
                     }
                 }
-            } 
+            }
         }
         fclose(trace);
     } else {
