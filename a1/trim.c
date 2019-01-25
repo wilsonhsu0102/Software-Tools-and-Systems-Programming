@@ -21,7 +21,8 @@ int main(int argc, char **argv) {
         fscanf(marker, "%lx %lx", &start_marker, &end_marker);
         fclose(marker);
     } else {
-        printf("Error: Marker file path not found");
+        perror("marker fopen");
+        exit(1);
     }
     
 
@@ -47,7 +48,9 @@ int main(int argc, char **argv) {
             }
         }
         fclose(trace);
+        return 0;
     } else {
-        printf("Error: Trace file path not found");
+        perror("trace fopen");
+        exit(1);
     }
 }
