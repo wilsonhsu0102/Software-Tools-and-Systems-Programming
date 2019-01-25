@@ -15,15 +15,19 @@ int main(int argc, char **argv) {
     }
 
     // Addresses should be stored in unsigned long variables
-    // unsigned long start_marker, end_marker;
-
-
+    unsigned long start_marker, end_marker;
+    FILE *marker = fopen(argv[2], "r");
+    if (marker) {
+        fscanf(marker, "%lx %lx", &start_marker, &end_marker);
+        fclose(marker);
+    } else {
+        printf("Error: File path not found");
+    }
+    
 
     /* For printing output, use this exact formatting string where the
      * first conversion is for the type of memory reference, and the second
      * is the address
      */
     // printf("%c,%#lx\n", VARIABLES TO PRINT GO HERE);
-
-    return 0;
 }
