@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
         fscanf(marker, "%lx %lx", &start_marker, &end_marker);
         fclose(marker);
     } else {
-        printf("Error: File path not found");
+        printf("Error: Marker file path not found");
     }
     
 
@@ -30,4 +30,25 @@ int main(int argc, char **argv) {
      * is the address
      */
     // printf("%c,%#lx\n", VARIABLES TO PRINT GO HERE);
+    int result;
+    char operation;
+    unsigned long address;
+    int byte;
+    FILE *trace = fopen(argv[1], "r");
+    if (trace) {
+        while ((result = fscanf(trace, "%c %lx,%d\n", &operation, &address, &byte) != EOF) || (result = fscanf(trace, "%c  %lx,%d\n", &operation, &address, &byte) != EOF)) {
+            if (address == start_marker) {
+                while ((result = fscanf(trace, "%c %lx,%d\n", &operation, &address, &byte) != EOF) || (result = fscanf(trace, "%c  %lx,%d\n", &operation, &address, &byte) != EOF)) {
+                    if (address != end_marker) {
+                        printf("%c,%#lx\n", operation, address);
+                    } else {
+                        break;
+                    }
+                }
+            } 
+        }
+        fclose(trace);
+    } else {
+        printf("Error: Trace file path not found");
+    }
 }
