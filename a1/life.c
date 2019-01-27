@@ -15,14 +15,12 @@ int main(int argc, char **argv) {
     }
 
     int size = strlen(argv[1]);
-    
-    // TODO: complete the main function
     int number_of_state = strtol(argv[2], NULL, 10);
     char *state = argv[1];
     print_state(state, size);
     for (int i=0; i < number_of_state - 1; i++) {
         update_state(state, size);
-	print_state(state, size);
+	    print_state(state, size);
     }
     return 0;
 }
