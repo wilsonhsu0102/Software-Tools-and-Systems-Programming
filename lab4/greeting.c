@@ -38,8 +38,15 @@ int main(int argc, char **argv) {
     char *name = argv[2];
 
     // Your code goes here
-
-
+    greeting[0] = '\0';
+    strncat(greeting, argv[1], 19);
+    if (strlen(greeting) != 19) {
+        strcat(greeting, " ");
+    }
+    int n = 19 - strlen(greeting);
+    if (n >= 1) {
+        strncat(greeting, name, n);
+    } 
     printf("%s\n", greeting);
     return 0;
 }
