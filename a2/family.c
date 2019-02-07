@@ -48,7 +48,13 @@ void print_families(Family* fam_list) {
    maxwords to family_increment, and next to NULL.
 */
 Family *new_family(char *str) {
-    return NULL;
+    Family *new_family;
+    new_family->signature = str;
+    new_family->word_ptrs = malloc((family_increment + 1) * sizeof(char *));
+    new_family->num_words = 0;
+    new_family->max_words = family_increment;
+    new_family->next = NULL;
+    return new_family;
 }
 
 
@@ -57,6 +63,10 @@ Family *new_family(char *str) {
    more pointers and then add the new pointer.
 */
 void add_word_to_family(Family *fam, char *word) {
+    if (fam->num_words == fam->max_words) {
+        fam->word_ptrs = realloc(fam->word_ptrs, family_increment * sizeof(char *));
+    }
+    fam->word_ptrs[fam->num_words] = word;
     return;
 }
 
@@ -66,6 +76,13 @@ void add_word_to_family(Family *fam, char *word) {
    fam_list is a pointer to the head of a list of Family nodes.
 */
 Family *find_family(Family *fam_list, char *sig) {
+    Family *curr_fam = fam_list;
+    while (curr_fam) {
+        if (curr_fam->signature == sig) { //string comparison? char [] comparison?
+            return curr_fam;
+        }
+        curr_fam = curr_fam->next;
+    }
     return NULL;
 }
 
@@ -76,12 +93,32 @@ Family *find_family(Family *fam_list, char *sig) {
    fam_list is a pointer to the head of a list of Family nodes.
 */
 Family *find_biggest_family(Family *fam_list) {
+    Family *curr_fam = fam_list;
+    Family *curr_max = fam_list;
+    while (curr_fam) {
+        if (curr_fam->num_words > curr_max->num_words) {
+            curr_max = curr_fam;
+        }
+        curr_fam = curr_fam->next;
+    }
+    if (curr_max) {
+        return curr_max;
+    }
     return NULL;
 }
 
 
 /* Deallocate all memory rooted in the List pointed to by fam_list. */
 void deallocate_families(Family *fam_list) {
+    Family *curr_fam = fam_list;
+    Family *next_fam = NULL;
+    while (curr_fam) {
+        if (curr_fam->next != NULL) {
+            next_fam = fam_list->next;
+        }
+        free(curr_fam);
+        curr_fam = next_fam;
+    }
     return;
 }
 
@@ -94,12 +131,29 @@ void deallocate_families(Family *fam_list) {
    that have at least one word from the current word_list.
 */
 Family *generate_families(char **word_list, char letter) {
+    while ()
     return NULL;
+}
+
+char *get_signature(char *word, int size, char letter) {
+    char signature[size + 1];
+    signature[size] = '\0';
+    for (int i = 0; i < size; i++) {
+        if (word[i] != letter) {
+            signature[i] = '-';
+        } else {
+            signature[i] = letter;
+        }
+    }
+    return signature;
 }
 
 
 /* Return the signature of the family pointed to by fam. */
 char *get_family_signature(Family *fam) {
+    if (fam) {
+        return fam->signature;
+    }
     return NULL;
 }
 
