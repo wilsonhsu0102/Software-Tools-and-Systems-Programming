@@ -15,7 +15,23 @@
    Note: Do not make copies of the words.
 */
 char **prune_word_list(char **words, int len, int *words_remaining) {
-    return NULL;
+    int num_words = 0;
+    char *list[MAX_WORDS];
+    for (int i = 0; words[i] != NULL; i++) { //finds all words with len
+        if (strlen(words[i]) == len) {
+            list[num_words] = words[i];
+            num_words++;
+        }
+    }
+
+    //move list of words to new allocated place.
+    char **new_list = malloc((num_words + 1) * sizeof(char *));
+    new_list[num_words] = NULL;
+    for (int i = 0; i < num_words; i++) {
+        new_list[i] = list[i];
+    }
+    *words_remaining = num_words;
+    return new_list;
 }
 
 
@@ -42,7 +58,34 @@ void deallocate_pruned_word_list(char **word_list) {
     printf("There are no words of that length.\n");
 */
 char **get_word_list_of_length(char **words, int *len) {
-    return NULL;
+    char input_buffer[BUF_SIZE];
+    char **new_words;
+    int num_words;
+    int length;
+    while (length < 1 || length > 40) {
+        printf("Length of words to use? ");
+        fflush(stdout);
+        //gets input
+        if (fgets(input_buffer, BUF_SIZE, stdin) == NULL) {
+            perror("fgets");
+            exit(1);
+        }
+        //convert to int
+        length = strtol(input_buffer, NULL, 10);
+        if (length < 1 || length > 40) { //dont really have to check this. but faster runtime.
+            printf("There are no words of that length.\n");
+	    } else { //get new words with word length = length
+            new_words = prune_word_list(words, length, &num_words);
+            if (new_words[0] == NULL) { //dont really need to have NULL for last index
+                length = 0;
+                printf("There are no words of that length.\n");
+            } else {
+                *len = length;
+            }
+        }
+        
+    }
+    return new_words;
 }
 
 
