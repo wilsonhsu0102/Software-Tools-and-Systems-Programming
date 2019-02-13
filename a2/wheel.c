@@ -80,6 +80,7 @@ char **get_word_list_of_length(char **words, int *len) {
         new_words = prune_word_list(words, length, &num_words);
         if (new_words[0] == NULL) {
             length = 0;
+            deallocate_pruned_word_list(new_words);
             printf("There are no words of that length.\n");
         } else {
             *len = length;
