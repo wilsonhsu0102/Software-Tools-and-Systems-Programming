@@ -5,55 +5,6 @@
 #include <sys/wait.h>
 #include "helper.h"
 
-// void excess() {
-//          infp = fopen(infile, "rb");
-//     if (infp == NULL) {
-//         perror("fopen");
-//         exit(1);
-//     }
-    
-
-//     // finds the number of recs in the file and number of recs for each process. 
-//     size_file = get_file_size(infile);
-//     num_recs = size_file / sizeof(struct rec);
-//     recs_for_process = num_recs / num_process;
-
-//     printf("size of file: %d\n", size_file);
-//     printf("number of recs of each process: %d\n", recs_for_process);
-
-//     // reads all the recs from the input file into allocated array.
-//     struct rec *rec_array = malloc(size_file);
-//     int i = 0;
-//     while (fread(&curr_rec, sizeof(struct rec), 1, infp) == 1) {
-//         rec_array[i] = curr_rec;
-//         i++;
-//         printf("frequency: %d, ", curr_rec.freq);
-//         printf("word: %s\n", curr_rec.word);
-//     }
-
-
-//     // split the job
-//     int r = 1;
-//     for (int i = 0; i < num_process; i++) {
-//         if (r > 0) {
-//             r = fork();
-//             qsort(&(rec_array[i * recs_for_process]), recs_for_process, sizeof(struct rec), compare_freq);
-//         }
-//     }
-
-//     if (r > 0) {
-//         for (int j = 0; j < num_recs; j++) {
-//                 printf("- sorted frequency: %d, ", rec_array[j].freq);
-//                 printf("word: %s\n", rec_array[j].word);
-//         }
-//     }
-        
-
-
-
-//     free(rec_array);
-//     fclose(infp);
-// }
 
 /* Takes in the number of child process, number of recs in input file and a 
    int array, modify the array to contain number of recs each child process 
@@ -118,7 +69,6 @@ void do_task(int index_recs, int num_recs, char *infile, struct rec *sorted_arra
 }
 
 
-
 int main(int argc, char *argv[]) {
     extern char *optarg;
     int flag;
@@ -151,10 +101,16 @@ int main(int argc, char *argv[]) {
     }
     // file size of input file.
     int file_size = get_file_size(infile);
+    // number of recs in infile.
+    int num_recs = file_size / sizeof(struct rec); 
 
     // terminate the program, since there's no point going further.
     if (num_process == 0 || file_size == 0) {
         return 0;
+    }
+    // more child process than num of recs called.
+    if (num_process > num_recs) {
+        num_process = num_recs;
     }
 
     FILE *infp = fopen(infile, "rb"); // testing
@@ -163,6 +119,7 @@ int main(int argc, char *argv[]) {
         printf("frequency: %d, ", curr_rec.freq);
         printf("word: %s\n", curr_rec.word);
     }
+    fclose(infp);
 
     // used for pipe between parent and each child process
     int fd[num_process][2];
@@ -170,8 +127,7 @@ int main(int argc, char *argv[]) {
     int r = 1;
     // records the number of recs each child process should take.
     int split_task[num_process];
-    // number of recs in infile.
-    int num_recs = file_size / sizeof(struct rec); 
+    
 
     divide_task(num_process, num_recs, split_task);
     printf("After dividing: \n");
@@ -185,13 +141,13 @@ int main(int argc, char *argv[]) {
     // sorted array for each child process
     struct rec *sorted_array;
     for (int n = 0; n < num_process; n++) {
-        // create pipe
-        if (pipe(fd[n]) == -1) {
-            perror("pipe");
-            exit(1); 
-        }
-        // forking child processes
         if (r > 0) {
+            // create pipe
+            if (pipe(fd[n]) == -1) {
+                perror("pipe");
+                exit(1); 
+            }
+            // forking child processes
             r = fork();
             if (r < 0) {
                 perror("fork"); 
@@ -200,12 +156,12 @@ int main(int argc, char *argv[]) {
             // spliting up tasks and completing it
             if (r == 0) {
                 child_idx = n;
-                sorted_array = malloc(sizeof(struct rec) * split_task[n]);
+                sorted_array = malloc(sizeof(struct rec) * split_task[n]); // need to be freed
                 do_task(index_of_rec, split_task[n], infile, sorted_array);
                 close(fd[n][0]); // close child process's reading pipe
             } else {
                 close(fd[n][1]); // close parent process's writing pipe
-                // pid = wait(&stat);                                      // testing
+                // pid = wait(&stat);                                      // cant wait here, just for testing
                 // printf("Child process: %d, exit status: %d \n", pid, WEXITSTATUS(stat));
             }
             index_of_rec += split_task[n];
@@ -236,10 +192,23 @@ int main(int argc, char *argv[]) {
             // printf("merge array[%d]: freq: %d, word: %s\n bytes read: %d \n", i, merge_array[i].freq, merge_array[i].word, byte_read);
         }
         
-        while (num_recs_read != num_recs) { //needs to be fixed not successfully finishing each merge. last indices
-            struct rec min = merge_array[0];
-            int idx_child = 0;
-            // find the minimum freq in each child pipe.
+        while (num_recs_read != num_recs) { //needs to be fixed not successfully finishing each merge. last indices REWRITE THIS
+            struct rec min;
+            int idx_child;
+            // find next min in merge array.
+            if (merge_array[0].freq == -1) {
+                for (int i = 1; i < num_process; i++) {
+                    if (merge_array[i].freq != -1) {
+                        min = merge_array[i];
+                        idx_child = i;
+                        break;
+                    }
+                }
+            } else {
+                min = merge_array[0];
+                idx_child = 0;
+            }
+            // finds min freq from merge array
             for (int i = 1; i < num_process; i++) {
                 if (merge_array[i].freq != -1 && min.freq > merge_array[i].freq) {
                     min = merge_array[i];
@@ -248,15 +217,22 @@ int main(int argc, char *argv[]) {
             }
             // add minimum to the result array
             result_array[num_recs_read] = min;
+            // printf("result[%d]: freq: %d, word: %s\n", num_recs_read + 1, min.freq, min.word);
             merge_array[idx_child] = empty;
             // read new rec from last minimum pipe
             if ((byte_read = read(fd[idx_child][0], &(merge_array[idx_child]), sizeof(struct rec))) < 0){
                 perror("read");
                 exit(1);
             }
-            printf("append[%d]: freq: %d, word: %s\n bytes read: %d \n", idx_child, merge_array[idx_child].freq, merge_array[idx_child].word, byte_read);
             num_recs_read++;
         }
+        for (int i = 0; i < num_process; i++) {
+            if (close(fd[i][0]) == -1) {
+                perror("close");
+                exit(1);
+            }
+        }
+        free(merge_array);
         
     } else {
         int byte_write;
@@ -265,7 +241,12 @@ int main(int argc, char *argv[]) {
                 perror("write");
                 exit(1);
             }
-            // printf("- sorted_array[%d]: freq: %d, word: %s\n bytes write: %d \n", child_idx, sorted_array[child_idx].freq, sorted_array[child_idx].word, byte_write);
+            printf("- From child %d, Wrote freq: %d, word: %s\n ", child_idx, sorted_array[i].freq, sorted_array[i].word);
+        }
+        free(sorted_array);
+        if (close(fd[child_idx][1]) == -1) {
+            perror("close");
+            exit(1);
         }
         exit(0);
     }
