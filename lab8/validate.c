@@ -52,7 +52,6 @@ int main(void){
         fprintf(stderr, "Error: could not read from stdin");
         exit(1);
     }
-
     // Make sure password is null-terminated
     if(n <= MAX_PASSWORD) {
         password[n] ='\0';
@@ -68,7 +67,6 @@ int main(void){
     strncat(userid, ":", MAXLINE - strlen(userid) - 1);
     user_length = strlen(userid);
     strncat(userid, password, MAXLINE - strlen(userid) - 1);
-
     FILE *fp = fopen(PASSWORD_FILE, "r");
     if (!fp) {
         perror("fopen");
@@ -80,8 +78,9 @@ int main(void){
         if (strcmp(userid, line) == 0) {
             exit(0); // found match
         }
-        else if(strncmp(userid, line, user_length) == 0)
+        else if(strncmp(userid, line, user_length) == 0) {
             exit (2); // invalid password
+        }
     }
     exit(3); // no such user
 }
