@@ -16,6 +16,9 @@ int main(void) {
   char user_id[MAXLINE];
   char password[MAXLINE];
 
+  memset(user_id, '\0', sizeof(user_id));
+  memset(password, '\0', sizeof(user_id));
+
   if(fgets(user_id, MAXLINE, stdin) == NULL) {
       perror("fgets");
       exit(1);
