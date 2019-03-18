@@ -5,7 +5,6 @@
 #include <sys/wait.h>
 #include "helper.h"
 
-
 /* Takes in the number of child process, number of recs in input file and a 
    int array, modify the array to contain number of recs each child process 
    would take. */
@@ -22,13 +21,13 @@ void divide_task(int num_process, int num_recs, int *split_tasks){
 }
 
 /* Takes in the index of first rec for current child process, number of recs to work 
-   on, file name of the rec file and sorted array to be modified. */
+   on, file name of the rec file and sorted array to be sorted. */
 void do_task(int index_recs, int num_recs, char *infile, struct rec *sorted_array) {
     FILE *fp;
     // for error checking
     int r, s;
     fp = fopen(infile, "rb");
-    if (!fp) {
+    if (fp == NULL) {
         perror("fopen");
         exit(1);
     }
@@ -50,19 +49,24 @@ void do_task(int index_recs, int num_recs, char *infile, struct rec *sorted_arra
     }
 }
 
+/* A merging function that takes in the result_array to be filled up with elements read in from fd pipe
+   there are in total num_process number of fd pipes with num_recs to be merged. */
 void merging(struct rec *result_array, int fd[][2], int *num_process, int *num_recs) {
-    // start merging, first load initial array
     int byte_read, num_recs_read = 0;
+    // set up an empty rec
     struct rec empty;
     empty.freq = -1;
-    struct rec *merge_array = malloc(sizeof(struct rec) * *num_process); // need to be freed
-
+    struct rec *merge_array = malloc(sizeof(struct rec) * *num_process);
+    if (merge_array == NULL) {
+        perror("malloc");
+        exit(1);
+    }
+    // load up the inital merge array.
     for (int i = 0; i < *num_process; i++) {
         if ((byte_read = read(fd[i][0], &(merge_array[i]), sizeof(struct rec))) < 0){
-            perror("read");
+            perror("read1");
             exit(1);
         }
-        // printf("merge array[%d]: freq: %d, word: %s\n bytes read: %d \n", i, merge_array[i].freq, merge_array[i].word, byte_read);
     }
     while (num_recs_read != *num_recs) { 
         struct rec min;
@@ -89,11 +93,11 @@ void merging(struct rec *result_array, int fd[][2], int *num_process, int *num_r
         }
         // add minimum to the result array
         result_array[num_recs_read] = min;
-        // printf("result[%d]: freq: %d, word: %s\n", num_recs_read + 1, min.freq, min.word);
+        // empty the array position
         merge_array[idx_child] = empty;
         // read new rec from last minimum pipe
         if ((byte_read = read(fd[idx_child][0], &(merge_array[idx_child]), sizeof(struct rec))) < 0){
-            perror("read");
+            perror("read2");
             exit(1);
         }
         num_recs_read++;
@@ -108,8 +112,26 @@ void merging(struct rec *result_array, int fd[][2], int *num_process, int *num_r
     free(merge_array);
 }
 
+/* Takes in the output file name, num_recs to be read from the result_array 
+   Read them all into the output file. */
+void write_out(char *outfile, int *num_recs, struct rec *result_array){
+    FILE *outputFile = fopen(outfile, "wb");
+    if (outputFile == NULL) {
+        perror("fopen");
+        exit(1);
+    }
+    if (fwrite(result_array, sizeof(struct rec), *num_recs, outputFile) != *num_recs) {
+        perror("fwrite");
+        exit(1);
+    }
+    if (fclose(outputFile) != 0) {
+        perror("fclose");
+        exit(1);
+    }
+}
 
 int main(int argc, char *argv[]) {
+    // for reading arguments
     extern char *optarg;
     int flag;
     char *infile = NULL, *outfile = NULL;
@@ -124,15 +146,12 @@ int main(int argc, char *argv[]) {
         switch(flag) {
             case 'n':
                 num_process = strtol(optarg, NULL, 10);
-                printf("num_process: %d\n", num_process);
                 break;
             case 'f':
                 infile = optarg;
-                printf("infile: %s\n", infile);
                 break;
             case 'o':
                 outfile = optarg;
-                printf("outfile: %s\n", outfile);
                 break;
             default:
                 fprintf(stderr, "Usage: psort -n <number of processes> -f <inputfile> -o <outputfile>\n");
@@ -148,22 +167,13 @@ int main(int argc, char *argv[]) {
     if (num_process == 0 || file_size == 0) {
         return 0;
     }
-    // more child process than num of recs called.
+    // more child process than num of recs, then we set num_process to num_recs
     if (num_process > num_recs) {
         num_process = num_recs;
     }
-
-    // FILE *infp = fopen(infile, "rb"); // testing
-    // struct rec curr_rec;
-    // while (fread(&curr_rec, sizeof(struct rec), 1, infp) == 1) {
-    //     printf("frequency: %d, ", curr_rec.freq);
-    //     printf("word: %s\n", curr_rec.word);
-    // }
-    // fclose(infp); // testing
-
     int split_task[num_process]; // records the number of recs each child process should take.
-    int stat, pid; //used for waiting message
 
+    // calculate to split up the task evenly
     divide_task(num_process, num_recs, split_task);
 
     int index_of_rec = 0; // index of recs for fseek in child process
@@ -172,9 +182,6 @@ int main(int argc, char *argv[]) {
     struct rec *sorted_array; // sorted array for each child process
     struct rec *result_array; // final result array
     int fd[num_process][2]; // pipes between parent and children
-
-    // // split work base on split_task and use q_sort in every child process to sort it 
-    // child_sort(fd, &child_idx, &num_process, &index_of_rec, &r, split_task, infile, sorted_array);
 
     for (int n = 0; n < num_process; n++) {
         if (r > 0) {
@@ -189,14 +196,15 @@ int main(int argc, char *argv[]) {
                 perror("fork"); 
                 exit(1); 
             }
-            // spliting up tasks and completing it
+            // spliting up tasks for child processes
             if (r == 0) {
                 child_idx = n;
-                sorted_array = malloc(sizeof(struct rec) * split_task[n]); // need to be freed
+                sorted_array = malloc(sizeof(struct rec) * split_task[n]);
                 if (sorted_array == NULL) {
                     perror("realloc");
                     exit(1);
                 }
+                // sorts array using qsort
                 do_task(index_of_rec, split_task[n], infile, sorted_array);
                 if (close(fd[n][0]) != 0) { // close child process's reading pipe
                     perror("close");
@@ -214,12 +222,22 @@ int main(int argc, char *argv[]) {
 
     if (r > 0) {
         result_array = malloc(sizeof(struct rec) * num_recs); 
-        // wait for child to finish sorting then start merging
-        for (int i = 0; i < num_process; i++) {
-            pid = wait(&stat);                                      // testing 
-            printf("Child process: %d, exit status: %d \n", pid, WEXITSTATUS(stat));
+        if (result_array == NULL) {
+            perror("malloc");
+            exit(1);
         }
-
+        // wait for child to finish sorting then start merging
+        int stat; //used for waiting message
+        for (int i = 0; i < num_process; i++) {
+            if (wait(&stat) == -1) {
+                perror("wait");
+                exit(1);
+            }
+            if (WEXITSTATUS(stat) != 0) {
+                fprintf(stderr, "Child terminated abnormally\n");
+            }
+        }
+        // merges child process results
         merging(result_array, fd, &num_process, &num_recs);
 
     } else {
@@ -229,9 +247,7 @@ int main(int argc, char *argv[]) {
                 perror("write");
                 exit(1);
             }
-            printf("- From child %d, Wrote freq: %d, word: %s\n ", child_idx, sorted_array[i].freq, sorted_array[i].word);
         }
-        
         if (close(fd[child_idx][1]) != 0) {
             perror("close");
             exit(1);
@@ -239,10 +255,8 @@ int main(int argc, char *argv[]) {
         free(sorted_array);
         exit(0);
     }
-    
-    for (int i = 0; i < num_recs; i++) {
-        printf("result array[%d]: freq: %d, word: %s\n", i, result_array[i].freq, result_array[i].word);
-    }
+    // output the result
+    write_out(outfile, &num_recs, result_array);
     free(result_array);
     return(0);
 }
