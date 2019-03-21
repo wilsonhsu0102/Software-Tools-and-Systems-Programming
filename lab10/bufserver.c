@@ -38,7 +38,9 @@ int main() {
         int nbytes;
         while ((nbytes = read(fd, after, room)) > 0) {
             // Step 1: update inbuf (how many bytes were just added?)
-
+            inbuf += nbytes;
+            room -= nbytes;
+            after = &(buf[nbytes]);
 
             int where;
 
@@ -55,7 +57,8 @@ int main() {
                 // using print statement below.
                 // Be sure to put a '\0' in the correct place first;
                 // otherwise you'll get junk in the output.
-
+                buf[where - 2] = '\0';
+                buf[where - 1] = '\0';
 
                 printf("Next message: %s\n", buf);
                 // Note that we could have also used write to avoid having to
@@ -63,17 +66,29 @@ int main() {
 
                 // Step 4: update inbuf and remove the full line from the buffer
                 // There might be stuff after the line, so don't just do inbuf = 0.
-
+                if (memset(buf, 0, where) == NULL) {
+                    perror("memset");
+                    exit(1);
+                }
+                inbuf -= where;
                 // You want to move the stuff after the full line to the beginning
                 // of the buffer.  A loop can do it, or you can use memmove.
                 // memmove(destination, source, number_of_bytes)
-
-
+                if (memmove(&(buf[0]), &(buf[where]), inbuf) == NULL) {
+                    perror("memmove");
+                    exit(1);
+                }
+                if (memset(&(buf[where]), 0, inbuf) == NULL) {
+                    perror("memset");
+                    exit(1);
+                }
             }
             // Step 5: update after and room, in preparation for the next read.
-
-
+            room = BUFSIZE - inbuf;
+            after = &(buf[inbuf]);
         }
+
+        printf("- - ENDED - -\n");
         close(fd);
     }
 
@@ -90,5 +105,10 @@ int main() {
  * Definitely do not use strchr or other string functions to search here. (Why not?)
  */
 int find_network_newline(const char *buf, int n) {
+    for (int i = 0; i < n - 1; i++) {
+        if (buf[i] == '\r' && buf[i + 1] == '\n') {
+            return i + 2;
+        }
+    }
     return -1;
 }
