@@ -87,8 +87,6 @@ int main() {
             room = BUFSIZE - inbuf;
             after = &(buf[inbuf]);
         }
-
-        printf("- - ENDED - -\n");
         close(fd);
     }
 
