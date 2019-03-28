@@ -1,4 +1,4 @@
-PORT = x
+PORT = 56971
 FLAGS = -DPORT=$(PORT) -Wall -g -std=gnu99 
 
 wordsrv : wordsrv.o socket.o gameplay.o

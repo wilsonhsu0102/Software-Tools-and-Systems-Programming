@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -16,7 +17,7 @@
 
 
 #ifndef PORT
-    #define PORT y
+    #define PORT 56970
 #endif
 #define MAX_QUEUE 5
 
@@ -42,6 +43,47 @@ void advance_turn(struct game_state *game);
  */
 fd_set allset;
 
+/*
+ * Search the first n characters of buf for a network newline (\r\n).
+ * Return index of '\r' + 2 of the first network newline,
+ * or -1 if no network newline is found.
+ */
+int find_network_newline(const char *buf, int n) {
+    for (int i = 0; i < n - 1; i++) {
+        if (buf[i] == '\r' && buf[i + 1] == '\n') {
+            return i + 2;
+        }
+    }
+    return -1;
+}
+
+void read_in(char *buf, int fd, int buf_size) {
+    int inbuf = 0;           // How many bytes currently in buffer?
+    int room = buf_size;     // How many bytes remaining in buffer?
+    char *after = buf;       // Pointer to position after the data in buf
+
+    int nbytes;
+    while ((nbytes = read(fd, after, room)) > 0) {
+        // Update inbuf, room, after
+        inbuf += nbytes;
+        room -= nbytes;
+        after = &(buf[nbytes]);
+
+        int where;
+        // The loop condition below calls find_network_newline
+        // to determine if a full line has been read from the client.
+        while ((where = find_network_newline(buf, inbuf)) > 0) {
+            // Output the full line, not including the "\r\n",
+            buf[where - 2] = '\0';
+            buf[where - 1] = '\0';
+            printf("Message received: %s\n", buf);
+            return ;
+        }
+        // Update after and room, in preparation for the next read.
+        room = buf_size - inbuf;
+        after = &(buf[inbuf]);
+    }
+}
 
 /* Add a client to the head of the linked list
  */
@@ -87,6 +129,37 @@ void remove_player(struct client **top, int fd) {
     }
 }
 
+void name_set(struct client *p, struct game_state *game, struct client **new_players) {
+    char buf[MAX_NAME];
+    struct client *d;
+    char *wrong_name = UNACCEPTABLE_NAME;
+    int name_check = 1;
+    
+    read_in(buf, p->fd, MAX_NAME);
+    if (strlen(buf) == 0) {
+        name_check = 0;
+    }
+    printf("String read: %s\n", buf);
+    for(d = game->head; d != NULL; d = d->next) {
+        if ((name_check == 0) || (strcmp(d->name, buf) == 0)) {
+            name_check = 0;
+            break;
+        }
+    }
+
+    if (name_check) {
+        add_player(&(game->head), p->fd, p->ipaddr);
+        strncat(game->head->name, buf, strlen(buf));
+        remove_player(new_players, p->fd);
+    } else {
+        if(write(p->fd, wrong_name, strlen(wrong_name)) == -1) {
+            fprintf(stderr, "Write to client %d failed\n", p->fd);
+            exit(1);
+        }
+        printf("name is unacceptable\n"); //kalkjfklwhef
+    }
+
+}
 
 int main(int argc, char **argv) {
     int clientfd, maxfd, nready;
@@ -96,6 +169,16 @@ int main(int argc, char **argv) {
     
     if(argc != 2){
         fprintf(stderr,"Usage: %s <dictionary filename>\n", argv[0]);
+        exit(1);
+    }
+
+    // Code to fix SIGPIPE problem
+    struct sigaction sa;
+    sa.sa_handler = SIG_IGN;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGPIPE, &sa, NULL) == -1) {
+        perror("sigaction");
         exit(1);
     }
     
@@ -142,6 +225,8 @@ int main(int argc, char **argv) {
             continue;
         }
 
+        
+
         if (FD_ISSET(listenfd, &rset)){
             printf("A new client is connecting\n");
             clientfd = accept_connection(listenfd);
@@ -176,6 +261,7 @@ int main(int argc, char **argv) {
                     if(cur_fd == p->fd) {
                         //TODO - handle input from an active client
                         
+                        printf("__________________> I APPEARED HERE IDK BUT YEARH <___________\n ");
                         
                         
                         break;
@@ -187,9 +273,16 @@ int main(int argc, char **argv) {
                     if(cur_fd == p->fd) {
                         // TODO - handle input from an new client who has
                         // not entered an acceptable name.
-                        break;
-                    } 
-                }
+
+                        name_set(p, &game, &new_players);
+                        
+                        struct client *d; // welktrwlketnhw
+                        for (d = game.head; d != NULL; d = d->next) { 
+                            printf("overall game list: %s\n", d->name);
+                        } // welktrwlketnhw
+                        break; 
+                    }
+                }   
             }
         }
     }
