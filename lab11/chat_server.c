@@ -45,8 +45,17 @@ int accept_connection(int fd, struct sockname *usernames) {
         exit(1);
     }
 
+    char *buf = malloc(sizeof(char) * (BUF_SIZE + 1));
+    int num_read = read(client_fd, buf, BUF_SIZE);
+    if (num_read < 0) {
+        perror("usr name read");
+        free(buf);
+        exit(1);
+    }
+    buf[num_read] = '\0';
+
     usernames[user_index].sock_fd = client_fd;
-    usernames[user_index].username = NULL;
+    usernames[user_index].username = buf;
     return client_fd;
 }
 
@@ -54,17 +63,29 @@ int accept_connection(int fd, struct sockname *usernames) {
 /* Read a message from client_index and echo it back to them.
  * Return the fd if it has been closed or 0 otherwise.
  */
-int read_from(int client_index, struct sockname *usernames) {
-    int fd = usernames[client_index].sock_fd;
+int read_from(int *client_index, struct sockname *usernames) {
+    int fd = usernames[*client_index].sock_fd;
     char buf[BUF_SIZE + 1];
 
     int num_read = read(fd, &buf, BUF_SIZE);
     buf[num_read] = '\0';
-    if (num_read == 0 || write(fd, buf, strlen(buf)) != strlen(buf)) {
-        usernames[client_index].sock_fd = -1;
-        return fd;
+    for (int i = 0; i < MAX_CONNECTIONS; i++) {
+        if (num_read == 0) {
+            usernames[*client_index].sock_fd = -1;
+            return fd;
+        }
+        if (usernames[i].sock_fd > -1) {
+            if (write(usernames[i].sock_fd, buf, strlen(buf)) != strlen(buf)) {
+                usernames[i].sock_fd = -1;
+                *client_index = i;
+                return usernames[i].sock_fd;
+            }
+        }
     }
-
+    // if (num_read == 0 || write(fd, buf, strlen(buf)) != strlen(buf)) {
+    //     usernames[client_index].sock_fd = -1;
+    //     return fd;
+    // }
     return 0;
 }
 
@@ -114,6 +135,7 @@ int main(void) {
     FD_ZERO(&all_fds);
     FD_SET(sock_fd, &all_fds);
 
+
     while (1) {
         // select updates the fd_set it receives, so we always use a copy and retain the original.
         fd_set listen_fds = all_fds;
@@ -138,12 +160,13 @@ int main(void) {
         for (int index = 0; index < MAX_CONNECTIONS; index++) {
             if (usernames[index].sock_fd > -1 && FD_ISSET(usernames[index].sock_fd, &listen_fds)) {
                 // Note: never reduces max_fd
-                int client_closed = read_from(index, usernames);
+                int client_closed = read_from(&index, usernames);
                 if (client_closed > 0) {
                     FD_CLR(client_closed, &all_fds);
                     printf("Client %d disconnected\n", client_closed);
+                    free(usernames[index].username);
                 } else {
-                    printf("Echoing message from client %d\n", usernames[index].sock_fd);
+                    printf("Echoing message from client %s\n", usernames[index].username);
                 }
             }
         }
