@@ -8,6 +8,7 @@
 #define NUM_LETTERS 26
 #define WELCOME_MSG "Welcome to our word game. What is your name? "
 #define UNACCEPTABLE_NAME "Unacceptable name, please try again. "
+#define WAIT_FOR_TURN "Please wait for your turn. "
 
 struct client {
     int fd;

@@ -29,8 +29,18 @@ void remove_player(struct client **top, int fd);
  * You are not required to write functions that match these prototypes, but
  * you may find the helpful when thinking about operations in your program.
  */
+
 /* Send the message in outbuf to all clients */
-void broadcast(struct game_state *game, char *outbuf);
+void broadcast(struct game_state *game, char *outbuf) {
+    for (struct client *d = game->head; d != NULL; d = d->next) {
+        if(write(d->fd, outbuf, strlen(outbuf)) == -1) {
+            fprintf(stderr, "Write to client %s failed\n", inet_ntoa(d->ipaddr));
+            remove_player(&(game->head), d->fd);
+        }
+    }
+}
+
+
 void announce_turn(struct game_state *game);
 void announce_winner(struct game_state *game, struct client *winner);
 /* Move the has_next_turn pointer to the next active client */
@@ -45,8 +55,9 @@ fd_set allset;
 
 /*
  * Search the first n characters of buf for a network newline (\r\n).
- * Return index of '\r' + 2 of the first network newline,
+ * Return one plus the index of the '\n' of the first network newline,
  * or -1 if no network newline is found.
+ * Definitely do not use strchr or other string functions to search here. (Why not?)
  */
 int find_network_newline(const char *buf, int n) {
     for (int i = 0; i < n - 1; i++) {
@@ -55,34 +66,6 @@ int find_network_newline(const char *buf, int n) {
         }
     }
     return -1;
-}
-
-void read_in(char *buf, int fd, int buf_size) {
-    int inbuf = 0;           // How many bytes currently in buffer?
-    int room = buf_size;     // How many bytes remaining in buffer?
-    char *after = buf;       // Pointer to position after the data in buf
-
-    int nbytes;
-    while ((nbytes = read(fd, after, room)) > 0) {
-        // Update inbuf, room, after
-        inbuf += nbytes;
-        room -= nbytes;
-        after = &(buf[nbytes]);
-
-        int where;
-        // The loop condition below calls find_network_newline
-        // to determine if a full line has been read from the client.
-        while ((where = find_network_newline(buf, inbuf)) > 0) {
-            // Output the full line, not including the "\r\n",
-            buf[where - 2] = '\0';
-            buf[where - 1] = '\0';
-            printf("Message received: %s\n", buf);
-            return ;
-        }
-        // Update after and room, in preparation for the next read.
-        room = buf_size - inbuf;
-        after = &(buf[inbuf]);
-    }
 }
 
 /* Add a client to the head of the linked list
@@ -129,37 +112,90 @@ void remove_player(struct client **top, int fd) {
     }
 }
 
-void name_set(struct client *p, struct game_state *game, struct client **new_players) {
-    char buf[MAX_NAME];
-    struct client *d;
-    char *wrong_name = UNACCEPTABLE_NAME;
-    int name_check = 1;
+void move_player(struct client **dest, struct client **from, struct client *player) {
+    struct client **p;
+    for (p = from; *p && (*p)->fd != player->fd; p = &(*p)->next);
+    // Now, p points to (1) top, or (2) a pointer to another client
+    // This avoids a special case for removing the head of the list
+    if (*p) {
+        struct client *t = (*p)->next;
+        *p = t;
+        player->next = *dest;
+        *dest = player;
+        printf("Moving client %d %s\n", player->fd, inet_ntoa(player->ipaddr));
+    } else {
+        fprintf(stderr, "Trying to remove fd %d, but I don't know about it\n",
+                 player->fd);
+    }
+}
+
+int read_in(struct client *player, struct client **list) {
+    int nbytes;
+    if ((nbytes = read(player->fd, player->in_ptr, MAX_BUF)) == -1) {
+        fprintf(stderr, "Read from client %s failed\n", inet_ntoa(player->ipaddr));
+        remove_player(list, player->fd);
+        return -1;
+    }
+    player->in_ptr = (player->in_ptr + nbytes);
     
-    read_in(buf, p->fd, MAX_NAME);
-    if (strlen(buf) == 0) {
+    int where;
+    if ((where = find_network_newline(player->inbuf, MAX_BUF)) == -1) {
+        return -1;
+    } 
+    player->inbuf[where - 2] = '\0';
+    printf("--- Received %s\n", player->inbuf);
+    return 0;
+}
+
+void sign_in(struct client *player, struct client **new_players, struct client **active_players, struct game_state *game) {
+    if (read_in(player, new_players) == -1) {
+        return ;
+    }
+    // Full line read in by read_in, continue to set up new player
+    int name_check = 1;
+    if (strlen(player->inbuf) == 0) {
         name_check = 0;
     }
-    printf("String read: %s\n", buf);
-    for(d = game->head; d != NULL; d = d->next) {
-        if ((name_check == 0) || (strcmp(d->name, buf) == 0)) {
-            name_check = 0;
-            break;
+    if (name_check != 0) {
+        struct client *p;
+        for (p = *active_players; p != NULL; p = p->next) {
+            if (strcmp(player->inbuf, p->name) == 0) {
+                name_check = 0;
+                break;
+            }
         }
     }
+    for (struct client *p = *new_players; p != NULL; p = p->next) {
+        printf("In new players: %d, %s\n", p->fd, inet_ntoa(p->ipaddr));
+    }
+    for (struct client *p = *active_players; p != NULL; p = p->next) {
+        printf("In active players: %d, %s\n", p->fd, inet_ntoa(p->ipaddr));
+    }
+    if (name_check == 1) {
+        move_player(active_players, new_players, player);
+        strncat(player->name, player->inbuf, strlen(player->inbuf));
 
-    if (name_check) {
-        add_player(&(game->head), p->fd, p->ipaddr);
-        strncat(game->head->name, buf, strlen(buf));
-        remove_player(new_players, p->fd);
-    } else {
-        if(write(p->fd, wrong_name, strlen(wrong_name)) == -1) {
-            fprintf(stderr, "Write to client %d failed\n", p->fd);
+        char msg[MAX_MSG];
+        char state[MAX_MSG];
+        status_message(state, game);
+        if (sprintf(msg, "%s Just Joined\n", player->name) < 0) {
+            perror("sprintf");
             exit(1);
         }
-        printf("name is unacceptable\n"); //kalkjfklwhef
+        broadcast(game, msg);
+        broadcast(game, state);
+    } else {
+        char *retry = UNACCEPTABLE_NAME;
+        if (write(player->fd, retry, strlen(retry)) == -1) {
+            fprintf(stderr, "Write to client %s failed\n", inet_ntoa(player->ipaddr));
+            remove_player(new_players, player->fd);
+            return ;
+        }
     }
-
+    memset(player->inbuf, 0, MAX_BUF);
+    player->in_ptr = player->inbuf;
 }
+
 
 int main(int argc, char **argv) {
     int clientfd, maxfd, nready;
@@ -225,8 +261,6 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        
-
         if (FD_ISSET(listenfd, &rset)){
             printf("A new client is connecting\n");
             clientfd = accept_connection(listenfd);
@@ -240,7 +274,7 @@ int main(int argc, char **argv) {
             char *greeting = WELCOME_MSG;
             if(write(clientfd, greeting, strlen(greeting)) == -1) {
                 fprintf(stderr, "Write to client %s failed\n", inet_ntoa(q.sin_addr));
-                remove_player(&(game.head), p->fd);
+                remove_player(&new_players, p->fd);
             };
         }
         
@@ -256,14 +290,11 @@ int main(int argc, char **argv) {
         for(cur_fd = 0; cur_fd <= maxfd; cur_fd++) {
             if(FD_ISSET(cur_fd, &rset)) {
                 // Check if this socket descriptor is an active player
-                
                 for(p = game.head; p != NULL; p = p->next) {
-                    if(cur_fd == p->fd) {
-                        //TODO - handle input from an active client
+                    if (cur_fd == p->fd) {
                         
-                        printf("__________________> I APPEARED HERE IDK BUT YEARH <___________\n ");
-                        
-                        
+                        printf("_____%d, %s SIGNED IN\n", p->fd, p->name);
+
                         break;
                     }
                 }
@@ -273,14 +304,15 @@ int main(int argc, char **argv) {
                     if(cur_fd == p->fd) {
                         // TODO - handle input from an new client who has
                         // not entered an acceptable name.
-
-                        name_set(p, &game, &new_players);
-                        
-                        struct client *d; // welktrwlketnhw
-                        for (d = game.head; d != NULL; d = d->next) { 
-                            printf("overall game list: %s\n", d->name);
-                        } // welktrwlketnhw
-                        break; 
+                        sign_in(p, &new_players, &(game.head), &game);
+                        printf("_____%d, %s SIGNED IN\n", p->fd, p->name);
+                        for (struct client *d = new_players; d != NULL; d = d->next) {
+                            printf("In new players: %d, %s\n", d->fd, inet_ntoa(d->ipaddr));
+                        }
+                        for (struct client *d = game.head; d != NULL; d = d->next) {
+                            printf("In new players: %d, %s\n", d->fd, inet_ntoa(d->ipaddr));
+                        }
+                        break;
                     }
                 }   
             }
