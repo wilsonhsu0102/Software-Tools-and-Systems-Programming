@@ -46,7 +46,8 @@ void init_game(struct game_state *game, char *dict_name) {
         }
     } 
 
-    int index = random() % game->dict.size;
+    // int index = random() % game->dict.size;
+    int index = 9; // test
     printf("Looking for word at index %d\n", index);
     for(int i = 0; i <= index; i++) {
         if(!fgets(buf, MAX_WORD, game->dict.fp)){

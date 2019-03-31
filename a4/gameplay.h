@@ -8,7 +8,9 @@
 #define NUM_LETTERS 26
 #define WELCOME_MSG "Welcome to our word game. What is your name? "
 #define UNACCEPTABLE_NAME "Unacceptable name, please try again. "
-#define WAIT_FOR_TURN "Please wait for your turn. "
+#define WAIT_FOR_TURN "Please wait for your turn.\n"
+#define INCORRECT_INPUT "Enter a lower case character a - z, which is not guessed yet.\n"
+#define CHAR_GUESSED "The character you input had been guessed.\n"
 
 struct client {
     int fd;
