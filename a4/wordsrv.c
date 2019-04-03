@@ -549,7 +549,6 @@ int main(int argc, char **argv) {
                     }
                 }
         
-                // Check if any new players are entering their names
                 for(p = new_players; p != NULL; p = p->next) {
                     if(cur_fd == p->fd) {
                         if (sign_in(p, &new_players, &game)) {
