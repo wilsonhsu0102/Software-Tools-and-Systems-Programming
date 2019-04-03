@@ -6,10 +6,10 @@
 #define MAX_BUF 256
 #define MAX_GUESSES 4
 #define NUM_LETTERS 26
-#define WELCOME_MSG "Welcome to our word game. What is your name? "
-#define UNACCEPTABLE_NAME "Unacceptable name, please try again. "
-#define WAIT_FOR_TURN "Please wait for your turn.\n"
-#define INCORRECT_INPUT "Enter a lower case character a - z, which is not guessed yet.\n"
+#define WELCOME_MSG "Welcome to our word game. What is your name?\r\n"
+#define UNACCEPTABLE_NAME "Unacceptable name, please try again.\r\n"
+#define WAIT_FOR_TURN "Please wait for your turn.\r\n"
+#define INCORRECT_INPUT "Enter a lower case character from a - z, which is not guessed yet.\r\n"
 
 struct client {
     int fd;

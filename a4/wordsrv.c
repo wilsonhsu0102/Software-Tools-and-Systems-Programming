@@ -37,6 +37,7 @@ void broadcast(struct game_state *game, char *outbuf) {
     for (struct client *d = game->head; d != NULL; d = d->next) {
         if(write(d->fd, outbuf, strlen(outbuf)) == -1) {
             fprintf(stderr, "Write to client %s failed\n", inet_ntoa(d->ipaddr));
+            printf("Player %s has disconnected\n", d->name);
             announce_remove_leaver(game, d);
         }
     }
@@ -45,11 +46,11 @@ void broadcast(struct game_state *game, char *outbuf) {
 /* Announce to all active player about who's turn it is */
 void announce_turn(struct game_state *game) {
     char msg[MAX_MSG];
-    char *your_turn = "It's your turn! Guess?\n";
+    char *your_turn = "It's your turn! Guess?\r\n";
     if (game->has_next_turn == NULL) {
         return ;
     }
-    if (sprintf(msg, "It's %s's turn\n", game->has_next_turn->name) < 0) {
+    if (sprintf(msg, "It's %s's turn\r\n", game->has_next_turn->name) < 0) {
         perror("sprintf");
         exit(1);
     }
@@ -60,16 +61,16 @@ void announce_turn(struct game_state *game) {
 void announce_winner(struct game_state *game, struct client *winner) {
     char you_win[MAX_MSG];
     char game_over[MAX_MSG];
-    if (sprintf(you_win, "You win!\nThe word is %s\n", game->word) < 0) {
+    if (sprintf(you_win, "You win!\r\nThe word is %s\r\n", game->word) < 0) {
         perror("sprintf");
         exit(1);
     }
-    if (sprintf(game_over, "Game Over! %s Won!\nThe word was %s\n", winner->name, game->word) < 0) {
+    if (sprintf(game_over, "Game Over! %s Won!\r\nThe word was %s\r\n", winner->name, game->word) < 0) {
         perror("sprintf");
         exit(1);
     }
     special_broadcast(game, winner, game_over, you_win);
-    char *new_game = "Let's Start a New Game!\n";
+    char *new_game = "Let's Start a New Game!\r\n";
     broadcast(game, new_game);
 }
 /* Move the has_next_turn pointer to the next active client */
@@ -88,11 +89,10 @@ fd_set allset;
  */
 void announce_remove_leaver(struct game_state *game, struct client *leaver) {
     char left_game[MAX_MSG];
-    if (sprintf(left_game, "%s just left the game\n", leaver->name) < 0) {
+    if (sprintf(left_game, "%s just left the game\r\n", leaver->name) < 0) {
         perror("sprintf");
         exit(1);
     }
-    printf("--- Removed %s ---\n", leaver->name);
     remove_player(&(game->head), leaver->fd);
     broadcast(game, left_game);
 }
@@ -106,11 +106,13 @@ void special_broadcast(struct game_state *game, struct client *player, char *msg
         if (k == player) {
             if(write(k->fd, msg2, strlen(msg2)) == -1) {
                 fprintf(stderr, "Write to client %s failed\n", k->name);
+                printf("Player %s has disconnected\n", k->name);
                 announce_remove_leaver(game, k);
             }
         } else {
             if(write(k->fd, msg1, strlen(msg1)) == -1) {
                 fprintf(stderr, "Write to client %s failed\n", k->name);
+                printf("Player %s has disconnected\n", k->name);
                 announce_remove_leaver(game, k);
             }
         }
@@ -201,7 +203,7 @@ void move_player(struct client **active_player, struct client **new_player, stru
  * read strings in player's inbuf.
  *
  * Return -1 if socket closes or error, 0 if network new 
- * line not found yet, 1 if network new line found 
+ * line not found, 1 if network new line found.
  */
 int read_in(struct client *player, struct client **list) {
     int nbytes;
@@ -211,7 +213,6 @@ int read_in(struct client *player, struct client **list) {
         return -1;
     }
     player->in_ptr = (player->in_ptr + nbytes);
-    
     int where;
     if ((where = find_network_newline(player->inbuf, MAX_BUF)) == -1) {
         return 0;
@@ -232,8 +233,10 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
     if ((readIn = read_in(player, new_players)) == -1) {
         return -1;
     } else if (readIn == 0) {
+        // Checks if socket is still open.
         if(write(player->fd, "", 1) == -1) {
             fprintf(stderr, "Write to client %d failed\n", player->fd);
+            printf("Player with fd: %d has disconnected\n", player->fd);
             remove_player(new_players, player->fd);
             return -1;
         }
@@ -260,9 +263,10 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
         // to active player list
         strncat(player->name, player->inbuf, strlen(player->inbuf));
         move_player(active_players, new_players, player);
+        printf("Player %s has joined the game\n", player->name);
         // Broadcast player joined message
         char msg[MAX_MSG];
-        if (sprintf(msg, "%s Just Joined\n", player->name) < 0) {
+        if (sprintf(msg, "%s Just Joined\r\n", player->name) < 0) {
             perror("sprintf");
             exit(1);
         }
@@ -271,6 +275,7 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
         status_message(state, game);
         if (write(player->fd, state, strlen(state)) == -1) {
             fprintf(stderr, "Write to client %s failed\n", inet_ntoa(player->ipaddr));
+            printf("Player %s has disconnected\n", player->name);
             remove_player(&(game->head), player->fd);
             return -1;
         }
@@ -287,6 +292,7 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
         char *retry = UNACCEPTABLE_NAME;
         if (write(player->fd, retry, strlen(retry)) == -1) {
             fprintf(stderr, "Write to client %s failed\n", inet_ntoa(player->ipaddr));
+            printf("Player with fd: %d has disconnected\n", player->fd);
             remove_player(new_players, player->fd);
             return -1;
         }
@@ -308,24 +314,31 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
 int make_move(struct game_state *game, struct client *player, char *dict_name) {
     int readIn;
     char left_game[MAX_MSG];
-    if (sprintf(left_game, "%s just left the game\n", player->name) < 0) {
+    if (sprintf(left_game, "%s just left the game\r\n", player->name) < 0) {
         perror("sprintf");
         exit(1);
     }
+    struct client *next_player = player->next;
     if ((readIn = read_in(player, &(game->head))) == -1) {
+        // current player removed during read_in, advance turn.
+        if (next_player == NULL) {
+            game->has_next_turn = game->head;
+        } else {
+            game->has_next_turn = next_player;
+        }
         broadcast(game, left_game);
         return -1;
     } else if (readIn == 0) {
+        // Checks if socket is still open
         if(write(player->fd, "", 1) == -1) {
             fprintf(stderr, "Write to client %d failed\n", player->fd);
-            if (player->next == NULL && game->head == player) {
-                game->has_next_turn = NULL;
-            } else if (player->next == NULL) {
-                game->has_next_turn = game->head;    
-            } else {
-                game->has_next_turn = player->next;
-            }
+            printf("Player %s has disconnected\n", player->name);
             announce_remove_leaver(game, player);
+            if (next_player == NULL) {
+                game->has_next_turn = game->head;
+            } else {
+                game->has_next_turn = next_player;
+            }
             announce_turn(game);
             return -1;
         }
@@ -337,7 +350,13 @@ int make_move(struct game_state *game, struct client *player, char *dict_name) {
         char *retry = INCORRECT_INPUT;
         if (write(player->fd, retry, strlen(retry)) == -1) {
             fprintf(stderr, "Write to client %s failed\n", inet_ntoa(player->ipaddr));
+            printf("Player %s has disconnected\n", player->name);
             announce_remove_leaver(game, player);
+            if (next_player == NULL) {
+                game->has_next_turn = game->head;
+            } else {
+                game->has_next_turn = next_player;
+            }
             return -1;
         }
         memset(player->inbuf, 0, MAX_BUF);
@@ -359,15 +378,16 @@ int make_move(struct game_state *game, struct client *player, char *dict_name) {
             }
         }
     }
+    printf("Player %s made move %c\n", player->name, player->inbuf[0]);
     char guessed[MAX_MSG];
-    if (sprintf(guessed, "%s Guessed %c\n", player->name, player->inbuf[0]) < 0) {
+    if (sprintf(guessed, "%s Guessed %c\r\n", player->name, player->inbuf[0]) < 0) {
         perror("sprintf");
         exit(1);
     }
     broadcast(game, guessed);
     if (!guessed_right) {
         game->guesses_left -= 1; 
-        if (sprintf(guessed, "%c is not in the word\n", player->inbuf[0]) < 0) {
+        if (sprintf(guessed, "%c is not in the word\r\n", player->inbuf[0]) < 0) {
             perror("sprintf");
             exit(1);
         }
@@ -377,7 +397,7 @@ int make_move(struct game_state *game, struct client *player, char *dict_name) {
             game->has_next_turn = player->next;
         }
     } else {
-        if (sprintf(guessed, "%c is in the word\n", player->inbuf[0]) < 0) {
+        if (sprintf(guessed, "%c is in the word\r\n", player->inbuf[0]) < 0) {
             perror("sprintf");
             exit(1);
         }
@@ -388,7 +408,7 @@ int make_move(struct game_state *game, struct client *player, char *dict_name) {
         init_game(game, dict_name);
     } else if (game->guesses_left == 0) {
         char game_over[MAX_MSG];
-        if (sprintf(game_over, "Game Over! No more moves left\nThe word was %s\nLet's Start a New Game!\n", game->word) < 0) {
+        if (sprintf(game_over, "Game Over! No more moves left\r\nThe word was %s\r\nLet's Start a New Game!\r\n", game->word) < 0) {
             perror("sprintf");
             exit(1);
         }
@@ -507,20 +527,20 @@ int main(int argc, char **argv) {
                             // If player types something, read in the msg, clear the buf
                             // tell player to wait for their turn.
                             int readIn;
-                            if ((readIn = read_in(p, (&game.head))) == -1) {
-                                break;
-                            } else if (readIn == 0) {
+                            if ((readIn = read_in(p, (&game.head))) == 0) {
+                                // check if socket is still open.
                                 if(write(p->fd, "", 1) == -1) {
                                     fprintf(stderr, "Write to client %d failed\n", p->fd);
+                                    printf("Player %s has disconnected\n", p->name);
                                     announce_remove_leaver(&game, p);
                                 }
-                                break;
-                            } else {
+                            } else if (readIn == 1) {
                                 char *wait = WAIT_FOR_TURN;
                                 memset(p->inbuf, 0, MAX_BUF);
                                 p->in_ptr = p->inbuf;
                                 if(write(p->fd, wait, strlen(wait)) == -1) {
                                     fprintf(stderr, "Write to client %s failed\n", p->name);
+                                    printf("Player %s has disconnected\n", p->name);
                                     announce_remove_leaver(&game, p);
                                 }
                             }
@@ -532,8 +552,7 @@ int main(int argc, char **argv) {
                 // Check if any new players are entering their names
                 for(p = new_players; p != NULL; p = p->next) {
                     if(cur_fd == p->fd) {
-                        int signIn = 0;
-                        if ((signIn = sign_in(p, &new_players, &game)) == 1) {
+                        if (sign_in(p, &new_players, &game)) {
                             announce_turn(&game);
                         }
                         break;
