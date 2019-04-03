@@ -124,7 +124,7 @@ void move_player(struct client **dest, struct client **from, struct client *play
         *dest = player;
         printf("Moving client %d %s\n", player->fd, inet_ntoa(player->ipaddr));
     } else {
-        fprintf(stderr, "Trying to remove fd %d, but I don't know about it\n",
+        fprintf(stderr, "Trying to move fd %d, but I don't know about it\n",
                  player->fd);
     }
 }
@@ -143,7 +143,6 @@ int read_in(struct client *player, struct client **list) {
         return 0;
     } 
     player->inbuf[where - 2] = '\0';
-    printf("--- Received %s ---\n", player->inbuf);
     return 1;
 }
 
@@ -168,12 +167,6 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
                 break;
             }
         }
-    }
-    for (struct client *p = *new_players; p != NULL; p = p->next) {
-        printf("Before in new players: %d, %s\n", p->fd, inet_ntoa(p->ipaddr));
-    }
-    for (struct client *p = *active_players; p != NULL; p = p->next) {
-        printf("Before in active players: %d, %s\n", p->fd, inet_ntoa(p->ipaddr));
     }
     if (name_check) {
         move_player(active_players, new_players, player);
@@ -217,7 +210,6 @@ int make_move(struct game_state *game, struct client *player, char *dict_name) {
     char *retry;
     if (strlen(player->inbuf) != 1 || player->inbuf[0] < 'a' || player->inbuf[0] > 'z') {
         retry = INCORRECT_INPUT;
-        printf("-------- INCORRECT INPUT %s -----------\n", player->inbuf);
         if (write(player->fd, retry, strlen(retry)) == -1) {
             fprintf(stderr, "Write to client %s failed\n", inet_ntoa(player->ipaddr));
             remove_player((&game->head), player->fd);
@@ -447,7 +439,6 @@ int main(int argc, char **argv) {
                         if (game.has_next_turn == p) {
                             int makeMove = 0;
                             if ((makeMove = make_move(&(game), p, argv[1])) == -1 || makeMove == 2) {
-                                printf("First\n");
                                 break;
                             } else if (makeMove == 0) {
                                 if(write(p->fd, "", 1) == -1) {
@@ -458,7 +449,6 @@ int main(int argc, char **argv) {
                                         game.has_next_turn = p->next;
                                     }
                                     remove_player(&(game.head), p->fd); // break or not?
-                                    printf("Second\n");
                                     char msg[MAX_MSG];
                                     char *your_turn = "It's your turn! Guess?\n";
                                     if (sprintf(msg, "It's %s's turn\n", game.has_next_turn->name) < 0) {
@@ -480,7 +470,6 @@ int main(int argc, char **argv) {
                                     }
                                     break;
                                 }
-                                printf("Third\n");
                                 break;
                             }
                             
@@ -494,10 +483,8 @@ int main(int argc, char **argv) {
                                 if(write(p->fd, "", 1) == -1) {
                                     fprintf(stderr, "Write to client %d failed\n", p->fd);
                                     remove_player(&(game.head), p->fd); // break or not?
-                                    printf("Second\n");
                                     break;
                                 }
-                                printf("Third\n");
                                 break;
                             } else {
                                 char *wait = WAIT_FOR_TURN;
@@ -521,16 +508,13 @@ int main(int argc, char **argv) {
                         // not entered an acceptable name.
                         int signIn = 0;
                         if ((signIn = sign_in(p, &new_players, &game)) == -1 || signIn == 2) {
-                            printf("First\n");
                             break;
                         } else if (signIn == 0) {
                             if(write(p->fd, "", 1) == -1) {
                                 fprintf(stderr, "Write to client %d failed\n", p->fd);
                                 remove_player(&new_players, p->fd); // break or not?
-                                printf("Second\n");
                                 break;
                             }
-                            printf("Third\n");
                             break;
                         }
                         if (game.has_next_turn == NULL) { 
@@ -555,12 +539,7 @@ int main(int argc, char **argv) {
                                 }
                             }
                         }
-                        for (struct client *d = new_players; d != NULL; d = d->next) {
-                            printf("In new players: %d, %s\n", d->fd, inet_ntoa(d->ipaddr));
-                        }
-                        for (struct client *d = game.head; d != NULL; d = d->next) {
-                            printf("In active players: %s, %s\n", d->name, inet_ntoa(d->ipaddr));
-                        }
+                    
                         break;
                     }
                 }   
@@ -569,5 +548,3 @@ int main(int argc, char **argv) {
     }
     return 0;
 }
-
-
