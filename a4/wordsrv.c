@@ -87,8 +87,7 @@ void advance_turn(struct game_state *game);
  */
 fd_set allset;
 
-/* 
- * Broadcast to all active players about that leaver left the game, after
+/* Broadcast to all active players about that leaver left the game, after
  * removing the leaver.
  */
 void announce_remove_leaver(struct game_state *game, struct client *leaver) {
@@ -101,8 +100,7 @@ void announce_remove_leaver(struct game_state *game, struct client *leaver) {
     broadcast(game, left_game);
 }
 
-/*
- * Broadcast to all active players except specified player about msg1.
+/* Broadcast to all active players except specified player about msg1.
  * Send msg2 to specified player.
  */
 void special_broadcast(struct game_state *game, struct client *player, char *msg1, char *msg2) {
@@ -123,8 +121,7 @@ void special_broadcast(struct game_state *game, struct client *player, char *msg
     }
 }
 
-/*
- * Search the first n characters of buf for a network newline (\r\n).
+/* Search the first n characters of buf for a network newline (\r\n).
  * 
  * Return 1 + the index of the '\n' of the first network newline,
  * or -1 if no network newline is found.
@@ -182,8 +179,7 @@ void remove_player(struct client **top, int fd) {
     }
 }
 
-/* 
- * Move player from new player list to active player list. 
+/* Move player from new player list to active player list. 
  */
 void move_player(struct client **active_player, struct client **new_player, struct client *player) {
     struct client **p;
@@ -202,8 +198,7 @@ void move_player(struct client **active_player, struct client **new_player, stru
     }
 }
 
-/* 
- * Function to read in strings from client side. Save 
+/* Function to read in strings from client side. Save 
  * read strings in player's inbuf.
  *
  * Return -1 if socket closes or error, 0 if network new 
@@ -235,8 +230,7 @@ int read_in(struct client *player, struct client **list) {
     return 1;
 }
 
-/* 
- * Checks if the move current player inputted is a valid input.
+/* Checks if the move current player inputted is a valid input.
  * 
  * Return -1 if socket is closed or error, 1 if player gave a 
  * valid input, 2 if player gave an invalid input.
@@ -264,8 +258,7 @@ int check_move(struct game_state *game, struct client *player, struct client *ne
     return 1;
 }
 
-/*
- * Modify the state of the game base on player's valid input.
+/* Modify the state of the game base on player's valid input.
  * 
  * Return 0 if game is not solved, 1 if game is solved.
  */
@@ -312,8 +305,7 @@ int process_move(struct game_state *game, struct client *player) {
     return game_solved;
 }
 
-/* 
- * Sign in new players, after signing in successfully move them to active player list.
+/* Sign in new players, after signing in successfully move them to active player list.
  * 
  * Return -1 if socket closes or error, 0 if read_in process has not yet been completed,
  * 1 if sign in successfully, 2 if user entered an invalid name.
@@ -382,8 +374,7 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
     }
 }
 
-/* 
- * Read in the input from the current_player, if it's not a single lower case 
+/* Read in the input from the current_player, if it's not a single lower case 
  * character from a - z or it had been guessed before, we prompt the user to
  * retry. If it's none of the above, then it's a valid input, and we change 
  * the current game state base on the input.
