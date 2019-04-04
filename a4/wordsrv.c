@@ -26,6 +26,9 @@ void add_player(struct client **top, int fd, struct in_addr addr);
 void remove_player(struct client **top, int fd);
 void special_broadcast(struct game_state *game, struct client *player, char *msg1, char *msg2);
 void announce_remove_leaver(struct game_state *game, struct client *leaver);
+int find_network_newline(const char *buf, int n);
+int check_move(struct game_state *game, struct client *player, struct client *next_player);
+int process_move(struct game_state *game, struct client *player);
 
 /* These are some of the function prototypes that we used in our solution 
  * You are not required to write functions that match these prototypes, but
@@ -54,6 +57,7 @@ void announce_turn(struct game_state *game) {
         perror("sprintf");
         exit(1);
     }
+    printf("It's %s's turn\r\n", game->has_next_turn->name);
     special_broadcast(game, game->has_next_turn, msg, your_turn);
 }
 
@@ -211,14 +215,101 @@ int read_in(struct client *player, struct client **list) {
         fprintf(stderr, "Read from client %s failed\n", inet_ntoa(player->ipaddr));
         remove_player(list, player->fd);
         return -1;
+    } else if (nbytes == 0) {
+        if(write(player->fd, "", 1) == -1) {
+            fprintf(stderr, "Write to client %d failed\n", player->fd);
+            printf("Player with fd: %d has disconnected\n", player->fd);
+            remove_player(list, player->fd);
+            return -1;
+        }
+        return 0;
     }
+    printf("[%d]: Read %d bytes\n", player->fd, nbytes);
     player->in_ptr = (player->in_ptr + nbytes);
     int where;
     if ((where = find_network_newline(player->inbuf, MAX_BUF)) == -1) {
         return 0;
-    } 
+    }
     player->inbuf[where - 2] = '\0';
+    printf("[%d]: Found new line: %s\n", player->fd, player->inbuf);
     return 1;
+}
+
+/* 
+ * Checks if the move current player inputted is a valid input.
+ * 
+ * Return -1 if socket is closed or error, 1 if player gave a 
+ * valid input, 2 if player gave an invalid input.
+ */
+int check_move(struct game_state *game, struct client *player, struct client *next_player) {
+    int letter_index = player->inbuf[0] - 'a';
+    if (strlen(player->inbuf) != 1 || game->letters_guessed[letter_index] || player->inbuf[0] < 'a' || player->inbuf[0] > 'z') {
+        char *retry = INCORRECT_INPUT;
+        if (write(player->fd, retry, strlen(retry)) == -1) {
+            fprintf(stderr, "Write to client %s failed\n", inet_ntoa(player->ipaddr));
+            printf("Player %s has disconnected\n", player->name);
+            announce_remove_leaver(game, player);
+            if (next_player == NULL) {
+                game->has_next_turn = game->head;
+            } else {
+                game->has_next_turn = next_player;
+            }
+            return -1;
+        }
+        memset(player->inbuf, 0, MAX_BUF);
+        player->in_ptr = player->inbuf;
+        return 2;
+    }
+    game->letters_guessed[letter_index] = 1;
+    return 1;
+}
+
+/*
+ * Modify the state of the game base on player's valid input.
+ * 
+ * Return 0 if game is not solved, 1 if game is solved.
+ */
+int process_move(struct game_state *game, struct client *player) {
+    int guessed_right = 0;
+    int game_solved = 1;
+    for (int i = 0; i < strlen(game->word); i++) {
+        if (game->word[i] == player->inbuf[0]) {
+            game->guess[i] = game->word[i];
+            guessed_right = 1;
+        } else {
+            if (game->guess[i] == '-') { 
+                game_solved = 0;
+            }
+        }
+    }
+    printf("Player %s made move %c\n", player->name, player->inbuf[0]);
+    char guessed[MAX_MSG];
+    if (sprintf(guessed, "%s Guessed %c\r\n", player->name, player->inbuf[0]) < 0) {
+        perror("sprintf");
+        exit(1);
+    }
+    broadcast(game, guessed);
+    if (!guessed_right) {
+        game->guesses_left -= 1; 
+        printf("%c is not in the word\n", player->inbuf[0]);
+        if (sprintf(guessed, "%c is not in the word\r\n", player->inbuf[0]) < 0) {
+            perror("sprintf");
+            exit(1);
+        }
+        if (player->next == NULL) {
+            game->has_next_turn = game->head;
+        } else {
+            game->has_next_turn = player->next;
+        }
+    } else {
+        printf("%c is in the word\n", player->inbuf[0]);
+        if (sprintf(guessed, "%c is in the word\r\n", player->inbuf[0]) < 0) {
+            perror("sprintf");
+            exit(1);
+        }
+    }
+    broadcast(game, guessed);
+    return game_solved;
 }
 
 /* 
@@ -230,19 +321,9 @@ int read_in(struct client *player, struct client **list) {
 int sign_in(struct client *player, struct client **new_players, struct game_state *game) {
     struct client **active_players = &(game->head);
     int readIn;
-    if ((readIn = read_in(player, new_players)) == -1) {
-        return -1;
-    } else if (readIn == 0) {
-        // Checks if socket is still open.
-        if(write(player->fd, "", 1) == -1) {
-            fprintf(stderr, "Write to client %d failed\n", player->fd);
-            printf("Player with fd: %d has disconnected\n", player->fd);
-            remove_player(new_players, player->fd);
-            return -1;
-        }
-        return 0;
+    if ((readIn = read_in(player, new_players)) != 1) {
+        return readIn;
     }
-    // Full line read in by read_in, continue to set up new player
     int name_check = 1;
     // Checks for null string
     if (strlen(player->inbuf) == 0) {
@@ -279,7 +360,6 @@ int sign_in(struct client *player, struct client **new_players, struct game_stat
             remove_player(&(game->head), player->fd);
             return -1;
         }
-        // Clean inbuf
         memset(player->inbuf, 0, MAX_BUF);
         player->in_ptr = player->inbuf;
         // If first player to sign in, player has next turn.
@@ -319,90 +399,24 @@ int make_move(struct game_state *game, struct client *player, char *dict_name) {
         exit(1);
     }
     struct client *next_player = player->next;
-    if ((readIn = read_in(player, &(game->head))) == -1) {
-        // current player removed during read_in, advance turn.
+    if ((readIn = read_in(player, &(game->head))) != 1) {
+        if (readIn == 0) {
+            return 0;
+        }
         if (next_player == NULL) {
             game->has_next_turn = game->head;
         } else {
             game->has_next_turn = next_player;
         }
         broadcast(game, left_game);
+        announce_turn(game);
         return -1;
-    } else if (readIn == 0) {
-        // Checks if socket is still open
-        if(write(player->fd, "", 1) == -1) {
-            fprintf(stderr, "Write to client %d failed\n", player->fd);
-            printf("Player %s has disconnected\n", player->name);
-            announce_remove_leaver(game, player);
-            if (next_player == NULL) {
-                game->has_next_turn = game->head;
-            } else {
-                game->has_next_turn = next_player;
-            }
-            announce_turn(game);
-            return -1;
-        }
-        return 0;
     }
-    // Checks for invalid inputs
-    int letter_index = player->inbuf[0] - 'a';
-    if (strlen(player->inbuf) != 1 || game->letters_guessed[letter_index] || player->inbuf[0] < 'a' || player->inbuf[0] > 'z') {
-        char *retry = INCORRECT_INPUT;
-        if (write(player->fd, retry, strlen(retry)) == -1) {
-            fprintf(stderr, "Write to client %s failed\n", inet_ntoa(player->ipaddr));
-            printf("Player %s has disconnected\n", player->name);
-            announce_remove_leaver(game, player);
-            if (next_player == NULL) {
-                game->has_next_turn = game->head;
-            } else {
-                game->has_next_turn = next_player;
-            }
-            return -1;
-        }
-        memset(player->inbuf, 0, MAX_BUF);
-        player->in_ptr = player->inbuf;
-        return 2;
+    int move_valid;
+    if ((move_valid = check_move(game, player, next_player)) != 1) {
+        return move_valid;
     }
-    // Reveals the char in word, if guessed right
-    // Checks if the whole word is guessed.
-    int guessed_right = 0;
-    int game_solved = 1;
-    game->letters_guessed[letter_index] = 1;
-    for (int i = 0; i < strlen(game->word); i++) {
-        if (game->word[i] == player->inbuf[0]) {
-            game->guess[i] = game->word[i];
-            guessed_right = 1;
-        } else {
-            if (game->guess[i] == '-') { 
-                game_solved = 0;
-            }
-        }
-    }
-    printf("Player %s made move %c\n", player->name, player->inbuf[0]);
-    char guessed[MAX_MSG];
-    if (sprintf(guessed, "%s Guessed %c\r\n", player->name, player->inbuf[0]) < 0) {
-        perror("sprintf");
-        exit(1);
-    }
-    broadcast(game, guessed);
-    if (!guessed_right) {
-        game->guesses_left -= 1; 
-        if (sprintf(guessed, "%c is not in the word\r\n", player->inbuf[0]) < 0) {
-            perror("sprintf");
-            exit(1);
-        }
-        if (player->next == NULL) {
-            game->has_next_turn = game->head;
-        } else {
-            game->has_next_turn = player->next;
-        }
-    } else {
-        if (sprintf(guessed, "%c is in the word\r\n", player->inbuf[0]) < 0) {
-            perror("sprintf");
-            exit(1);
-        }
-    }
-    broadcast(game, guessed);
+    int game_solved = process_move(game, player);
     if (game_solved) {
         announce_winner(game, player);
         init_game(game, dict_name);
@@ -523,17 +537,17 @@ int main(int argc, char **argv) {
                             // current player's turn
                             make_move(&(game), p, argv[1]);
                         } else {
-                            // Not current player's turn
                             // If player types something, read in the msg, clear the buf
                             // tell player to wait for their turn.
+                            char left_game[MAX_MSG];
+                            if (sprintf(left_game, "%s just left the game\r\n", p->name) < 0) {
+                                perror("sprintf");
+                                exit(1);
+                            }
                             int readIn;
-                            if ((readIn = read_in(p, (&game.head))) == 0) {
-                                // check if socket is still open.
-                                if(write(p->fd, "", 1) == -1) {
-                                    fprintf(stderr, "Write to client %d failed\n", p->fd);
-                                    printf("Player %s has disconnected\n", p->name);
-                                    announce_remove_leaver(&game, p);
-                                }
+                            if ((readIn = read_in(p, (&game.head))) == -1) {
+                                broadcast(&game, left_game);
+                                announce_turn(&game);
                             } else if (readIn == 1) {
                                 char *wait = WAIT_FOR_TURN;
                                 memset(p->inbuf, 0, MAX_BUF);
