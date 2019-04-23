@@ -135,7 +135,6 @@ int main(void) {
     FD_ZERO(&all_fds);
     FD_SET(sock_fd, &all_fds);
 
-
     while (1) {
         // select updates the fd_set it receives, so we always use a copy and retain the original.
         fd_set listen_fds = all_fds;
